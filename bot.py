@@ -564,4 +564,86 @@ def tf_kb(symbol):
             f"{tf['emoji']} {tf['label']} — {tf['desc']}{rec}",
             callback_data=f"tf:{symbol}:{tf['key']}"
         )])
-    rows.append([InlineKeyboardButton
+    rows.append([InlineKeyboardButton("🔙 الأزواج", callback_data="choose_pair")])
+    return InlineKeyboardMarkup(rows)
+
+def signal_kb(symbol, interval):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 تحديث الإشارة", callback_data=f"tf:{symbol}:{interval}")],
+        [InlineKeyboardButton("🔀 تغيير الزوج", callback_data="choose_pair"),
+         InlineKeyboardButton("⏱ تغيير الفريم", callback_data=f"pair:{symbol}")],
+        [InlineKeyboardButton("🏠 الرئيسية", callback_data="start")],
+    ])
+
+# ===================== HANDLERS =====================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📊 ابدأ التحليل", callback_data="choose_pair")
+    ]])
+    text = """
+🤖 *TRADE ALGO BOT — PRO VERSION*
+_Advanced Multi-Indicator Analysis_
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*13 مؤشر متداخل:*
+✅ RSI + MACD + Bollinger Bands
+✅ EMA 5/9/21/50
+✅ Stochastic + Williams %R
+✅ CCI + Momentum + Volume
+✅ Candle Patterns (7 أنماط)
+✅ Support/Resistance + ZigZag
+✅ Trend Filter
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ _للأغراض التعليمية فقط_
+_لا تتداول بأكثر مما تقدر على خسارته_
+""".strip()
+    if update.message:
+        await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.MARKDOWN)
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.MARKDOWN)
+
+async def cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    d = q.data
+
+    if d == "start":
+        await start(update, context)
+    elif d == "choose_pair":
+        await q.edit_message_text(
+            "💱 *اختر زوج العملات:*\n🔥 = الأكثر تداولاً | OTC = خارج السوق",
+            reply_markup=pairs_kb(), parse_mode=ParseMode.MARKDOWN)
+    elif d.startswith("pair:"):
+        symbol = d.split(":")[1]
+        await q.edit_message_text(
+            f"⏱ *اختر الإطار الزمني:*\n📌 الزوج: `{symbol}`",
+            reply_markup=tf_kb(symbol), parse_mode=ParseMode.MARKDOWN)
+    elif d.startswith("tf:"):
+        _, symbol, interval = d.split(":")
+        await q.edit_message_text(
+            f"⏳ *جاري التحليل العميق...*\n\n🔍 `{symbol}` | `{interval}`\n\n⚙️ تحليل 13 مؤشر...",
+            parse_mode=ParseMode.MARKDOWN)
+        result = analyze(symbol, interval)
+        if "error" in result:
+            await q.edit_message_text(f"❌ {result['error']}", reply_markup=signal_kb(symbol, interval))
+        else:
+            await q.edit_message_text(
+                build_msg(symbol, interval, result),
+                reply_markup=signal_kb(symbol, interval),
+                parse_mode=ParseMode.MARKDOWN)
+
+# ===================== MAIN =====================
+
+def main():
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(cb))
+    logger.info("🚀 Trade Algo Bot PRO running...")
+    app.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
+    main()
